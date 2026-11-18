@@ -216,7 +216,7 @@ const getEnv = (): EnvData => {
   const isProd = environment === ImmichEnvironment.Production;
   const buildFolder = dto.IMMICH_BUILD_DATA || '/build';
   const folders = {
-    geodata: join(buildFolder, 'geodata'),
+    geodata: dto.IMMICH_GEODATA_OVERRIDE || join(buildFolder, 'geodata'),
     web: join(buildFolder, 'www'),
   };
 

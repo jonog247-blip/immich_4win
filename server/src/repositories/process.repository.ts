@@ -13,11 +13,14 @@ export class ProcessRepository {
 
   async isCommandAvailable(command: string): Promise<boolean> {
     const directories = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+    const names = process.platform === 'win32' && !command.toLowerCase().endsWith('.exe') ? [command, `${command}.exe`] : [command];
     const found = await Promise.all(
-      directories.map((directory) =>
-        access(path.join(directory, command), constants.X_OK)
-          .then(() => true)
-          .catch(() => false),
+      directories.flatMap((directory) =>
+        names.map((name) =>
+          access(path.join(directory, name), constants.X_OK)
+            .then(() => true)
+            .catch(() => false),
+        ),
       ),
     );
     return found.includes(true);

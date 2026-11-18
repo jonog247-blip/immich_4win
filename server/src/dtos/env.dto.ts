@@ -12,7 +12,11 @@ enum DatabaseSslMode {
 }
 
 const DatabaseSslModeSchema = z.enum(DatabaseSslMode).describe('Database SSL mode').meta({ id: 'DatabaseSslMode' });
-const absolutePath = z.string().regex(/^\//, 'Must be an absolute path').optional();
+// POSIX paths start with '/', Windows paths with a drive letter ('C:\', 'C:/') or a UNC prefix ('\\server')
+const absolutePath = z
+  .string()
+  .regex(/^(?:\/|[A-Za-z]:[\\/]|\\\\)/, 'Must be an absolute path')
+  .optional();
 /**
 Treat certain strings as booleans and coerce them to boolean
 Ideal for environment variables that are strings but should be treated as booleans
@@ -51,6 +55,11 @@ export const EnvSchema = z
     IMMICH_LOG_FORMAT: LogFormatSchema.optional(),
     IMMICH_MEDIA_LOCATION: absolutePath,
     IMMICH_MICROSERVICES_METRICS_PORT: z.coerce.number().int().optional(),
+    IMMICH_FFMPEG_PATH: z.string().optional(),
+    IMMICH_FFPROBE_PATH: z.string().optional(),
+    IMMICH_EXIFTOOL_PATH: z.string().optional(),
+    IMMICH_PG_BIN: z.string().optional(),
+    IMMICH_GEODATA_OVERRIDE: z.string().optional(),
     IMMICH_ALLOW_EXTERNAL_PLUGINS: stringBool.optional(),
     IMMICH_PLUGINS_INSTALL_FOLDER: absolutePath,
     IMMICH_PORT: z.coerce.number().int().optional(),

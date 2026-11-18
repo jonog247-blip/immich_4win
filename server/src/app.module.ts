@@ -1,5 +1,6 @@
 import { OrchestrationApiModule, controllers as futoBackupsControllers } from '@futo-org/backups-orchestrator-api';
 import { BullModule } from '@nestjs/bullmq';
+import ffmpeg from 'fluent-ffmpeg';
 import { Inject, Module, OnModuleDestroy, OnModuleInit, applyDecorators, forwardRef } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
@@ -77,6 +78,14 @@ const commonImports = [
 const bullImports = [BullModule.forRoot(bull.config), BullModule.registerQueue(...bull.queues)];
 
 configureUserAgent();
+
+if (process.env.IMMICH_FFMPEG_PATH) {
+  ffmpeg.setFfmpegPath(process.env.IMMICH_FFMPEG_PATH);
+}
+
+if (process.env.IMMICH_FFPROBE_PATH) {
+  ffmpeg.setFfprobePath(process.env.IMMICH_FFPROBE_PATH);
+}
 
 export class BaseModule implements OnModuleInit, OnModuleDestroy {
   constructor(

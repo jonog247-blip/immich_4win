@@ -53,6 +53,16 @@ const messages = {
 
 @Injectable()
 export class DatabaseService extends BaseService {
+  // Windows builds cannot ship VectorChord, which is Linux-only, so pgvector (>= 0.8, when the vector
+  // dimension limit was lifted) is the vector extension on Windows. The supported range is reported by
+  // the native launcher through DB_VECTOR_EXTENSION, but keep the guard here as well.
+  private getVectorExtensionRange(extension: VectorExtension): string {
+    const range = this.databaseRepository.getExtensionVersionRange(extension);
+    return process.platform === 'win32' && extension === DatabaseExtension.Vector
+      ? range.replace(/\s*<\d+(?:\.\d+)*\s*$/, '')
+      : range;
+  }
+
   @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.DatabaseService })
   async onBootstrap() {
     const version = await this.databaseRepository.getPostgresVersion();
@@ -67,7 +77,7 @@ export class DatabaseService extends BaseService {
     await this.databaseRepository.withLock(DatabaseLock.Migrations, async () => {
       const extension = await this.databaseRepository.getVectorExtension();
       const name = EXTENSION_NAMES[extension];
-      const extensionRange = this.databaseRepository.getExtensionVersionRange(extension);
+      const extensionRange = this.getVectorExtensionRange(extension);
 
       const extensionVersions = await this.databaseRepository.getExtensionVersions(VECTOR_EXTENSIONS);
       const { installedVersion, availableVersion } = extensionVersions.find((v) => v.name === extension) ?? {};

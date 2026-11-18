@@ -1,0 +1,9 @@
+{
+  "name": "better-sqlite3",
+  "version": "12.11.1",
+  "description": "better-sqlite3 API implemented on top of Node's built-in node:sqlite, for Immich4Win",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "private": true,
+  "license": "MIT"
+}

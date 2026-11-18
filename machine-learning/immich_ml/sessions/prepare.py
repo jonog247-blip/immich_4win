@@ -1,9 +1,15 @@
-import fcntl
+import contextlib
+import os
 import pickle
 import sys
 from pathlib import Path
 from shutil import rmtree
 from typing import Any
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 import onnx
 from google.protobuf.message import DecodeError
@@ -15,10 +21,34 @@ from ..config import settings
 from .ort import UNREADABLE, GraphSpec, Manifest, fresh
 
 
+@contextlib.contextmanager
+def graph_lock(path: Path):
+    """Several workers may want the same graph, and on Windows there is no fcntl.flock."""
+    with path.open("a+b") as lock:
+        if os.name == "nt":
+            while True:
+                try:
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)  # blocks, retrying for up to 10s at a time
+                    break
+                except OSError:
+                    continue
+        else:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def main() -> None:
     spec: GraphSpec = pickle.loads(sys.stdin.buffer.read())
-    with spec.model_path.with_suffix(".lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)  # several workers may want the same graph
+    with graph_lock(spec.model_path.with_suffix(".lock")):
         if fresh(spec) is None:
             try:
                 prepare(spec)

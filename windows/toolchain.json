@@ -1,0 +1,67 @@
+{
+  "node": {
+    "package": "node-win-x64",
+    "version": "24.22.2",
+    "files": [
+      "node.exe"
+    ],
+    "license": "MIT",
+    "licenseFile": "LICENSE",
+    "path": "bin/node.exe"
+  },
+  "postgres": {
+    "repository": "theseus-rs/postgresql-binaries",
+    "version": "18.6.1",
+    "asset": "postgresql-{version}-x86_64-pc-windows-msvc.tar.gz",
+    "layout": "postgresql",
+    "note": "full build: server, psql, pg_dump, pg_dumpall, pg_restore and contrib (uuid-ossp, unaccent, cube, earthdistance, pg_trgm)",
+    "license": "PostgreSQL",
+    "licenseFile": "share/doc/postgresql/copyright"
+  },
+  "pgvector": {
+    "repository": "czkwg8/pgvector-windows-binary",
+    "version": "v0.8.7",
+    "asset": "pgvector-v{version}-pg{pgMajor}-windows-x64.zip",
+    "license": "PostgreSQL",
+    "licenseFile": "LICENSE"
+  },
+  "redis": {
+    "repository": "redis-windows/redis-windows",
+    "version": "8.10.3",
+    "asset": "Redis-{version}-Windows-x64-msys2.zip",
+    "license": "AGPL-3.0",
+    "licenseFile": "LICENSE"
+  },
+  "ffmpeg": {
+    "repository": "BtbN/FFmpeg-Builds",
+    "version": "latest",
+    "assetPattern": "^ffmpeg-n?[0-9.]*-win64-gpl\\.zip$",
+    "fallbackAsset": "ffmpeg-master-latest-win64-gpl.zip",
+    "license": "GPL-3.0",
+    "licenseFile": "LICENSE.txt"
+  },
+  "exiftool": {
+    "url": "https://exiftool.org/exiftool-{version}_64.zip",
+    "version": "13.60",
+    "layout": "exiftool/",
+    "note": "Windows 64-bit executable zip, no Perl needed; the archive ships exiftool(-k).exe which is renamed to exiftool.exe",
+    "license": "Artistic-2.0",
+    "licenseFile": "README"
+  },
+  "python": {
+    "tag": "20261026",
+    "version": "3.12.16",
+    "asset": "cpython-{version}+{tag}-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "license": "PSF-2.0",
+    "licenseFile": "python/LICENSE.txt"
+  },
+  "uv": {
+    "package": "uv",
+    "version": "0.13.7",
+    "asset": "uv-x86_64-pc-windows-msvc.zip",
+    "repository": "astral-sh/uv",
+    "tag": "0.13.7",
+    "license": "MIT OR Apache-2.0",
+    "licenseFile": "uv/LICENSE-MIT"
+  }
+}
