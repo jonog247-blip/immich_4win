@@ -27,8 +27,8 @@ const {
   mkdirSync,
   readFileSync,
   readdirSync,
-  cpSync,
   renameSync,
+  cpSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -254,10 +254,54 @@ function within(child, parent) {
 }
 
 function loadSettings() {
-  const stored = readJson(PATHS.settings) ?? {};
+  // A settings.json edited by hand is the most likely file to be malformed. Reporting it is better
+  // than silently running on defaults, which looks like the user's settings were ignored.
+  let stored = {};
+  if (existsSync(PATHS.settings)) {
+    try {
+      stored = JSON.parse(readFileSync(PATHS.settings, 'utf8'));
+    } catch (error) {
+      info(`  ${warn(`settings.json could not be read (${error.message}); using defaults`)}`);
+      stored = {};
+    }
+
+    if (!isPlainObject(stored)) {
+      info(`  ${warn('settings.json does not contain an object; using defaults')}`);
+      stored = {};
+    }
+  }
+
   const settings = deepMerge(DEFAULT_SETTINGS, stored);
+
+  // Values reach the server as environment variables, where a wrong type aborts startup with a
+  // message about a variable the user never set. They are checked here, where the setting name is
+  // still known.
+  settings.port = toPort(settings.port, DEFAULT_SETTINGS.port, 'port');
+  settings.database.port = toPort(settings.database.port, DEFAULT_SETTINGS.database.port, 'database.port');
+  settings.redis.port = toPort(settings.redis.port, DEFAULT_SETTINGS.redis.port, 'redis.port');
+  settings.machineLearning.port = toPort(settings.machineLearning.port, DEFAULT_SETTINGS.machineLearning.port, 'machineLearning.port');
+  settings.redis.enabled = settings.redis.enabled !== false;
+  settings.machineLearning.enabled = settings.machineLearning.enabled !== false;
+  if (!Array.isArray(settings.server.workers) || settings.server.workers.length === 0) {
+    settings.server.workers = DEFAULT_SETTINGS.server.workers;
+  }
+
   settings.mediaLocation = settings.mediaLocation ? path.resolve(settings.mediaLocation) : PATHS.upload;
   return settings;
+}
+
+// A port has to be a whole number in range; anything else would fail much later and less clearly
+function toPort(value, fallback, label) {
+  const port = Number(value);
+  if (Number.isInteger(port) && port > 0 && port <= 65_535) {
+    return port;
+  }
+
+  if (value !== undefined && value !== null && value !== '') {
+    info(`  ${warn(`settings.json ${label} is not a valid port ("${value}"), using ${fallback}`)}`);
+  }
+
+  return fallback;
 }
 
 function persistSettings(settings) {
@@ -687,7 +731,17 @@ function serverEnvironment(settings, ports) {
   }
 
   env.DB_URL = `postgres://${encodeURIComponent(settings.database.user)}:${encodeURIComponent(settings.database.password)}@${settings.database.host}:${ports.database}/${encodeURIComponent(settings.database.name)}`;
-  env.DB_VECTOR_EXTENSION = settings.database.vectorExtension;
+  // The server rejects anything but these two values, and a rejected value aborts startup with an
+  // error about an environment variable the user never set. An unrecognised setting is therefore
+  // reported once and the default is used instead.
+  const vectorExtension = String(settings.database.vectorExtension ?? '').trim();
+  if (vectorExtension === 'pgvector' || vectorExtension === 'vectorchord') {
+    env.DB_VECTOR_EXTENSION = vectorExtension;
+  } else {
+    info(
+      `  ${warn(`settings.json database.vectorExtension is "${vectorExtension}", using "pgvector" (Immich accepts pgvector or vectorchord)`)}`,
+    );
+  }
 
   if (settings.redis.enabled) {
     env.REDIS_HOSTNAME = '127.0.0.1';
@@ -2129,26 +2183,45 @@ async function commandBackup(options) {
   const connection = ['-h', '127.0.0.1', '-p', String(running.port), '-U', settings.database.user, '-d', settings.database.name];
 
   if (action === 'create') {
-    const file = path.join(PATHS.backups, target && target.endsWith('.sql.gz') ? target : backupFileName());
-    const dump = spawn(tool(RUNTIME.postgres, 'pg_dump'), [...connection, '--clean', '--if-exists', '--no-owner'], { env, windowsHide: true });
+    const finalFile = path.join(PATHS.backups, target && target.endsWith('.sql.gz') ? target : backupFileName());
+    // Written under a temporary name first: a dump that fails halfway must not leave a truncated
+    // archive where Immich lists backups, or the user restores a file that cannot work.
+    const partial = `${finalFile}.part`;
+    mkdirSync(PATHS.backups, { recursive: true });
+
+    const dump = spawn(tool(RUNTIME.postgres, 'pg_dump'), [...connection, '--clean', '--if-exists', '--no-owner'], {
+      env,
+      windowsHide: true,
+    });
     let stderr = '';
     dump.stderr.on('data', (chunk) => (stderr += chunk));
 
+    // pg_dump can stop writing while the gzip side waits for more input, and pipeline() would then
+    // wait forever; the process exit closes the loop either way.
+    const exited = new Promise((resolve) => {
+      dump.on('error', (error) => resolve({ code: -1, error }));
+      dump.on('close', (code) => resolve({ code }));
+    });
+
     try {
-      await pipeline(dump.stdout, createGzip({ level: 6 }), createWriteStream(file));
+      await pipeline(dump.stdout, createGzip({ level: 6 }), createWriteStream(partial));
     } catch (error) {
+      dump.kill();
+      rmSync(partial, { force: true });
       fail(`backup failed: ${error.message} ${stderr.slice(0, 400)}`);
       return EXIT.startFailed;
     }
 
-    const exitCode = await new Promise((resolve) => dump.on('exit', resolve));
-    if (exitCode !== 0) {
-      fail(`pg_dump failed: ${stderr.slice(0, 600)}`);
+    const result = await exited;
+    if (result.code !== 0) {
+      rmSync(partial, { force: true });
+      fail(`pg_dump failed${result.error ? `: ${result.error.message}` : ''}: ${stderr.trim().slice(0, 600) || 'no detail'}`);
       return EXIT.startFailed;
     }
 
-    info(`${ok('backup created')} ${file}`);
-    info(dim(`  ${(statSync(file).size / 1024 ** 2).toFixed(1)} MB — visible in Immich under Administration > Backups`));
+    renameSync(partial, finalFile);
+    info(`${ok('backup created')} ${finalFile}`);
+    info(dim(`  ${(statSync(finalFile).size / 1024 ** 2).toFixed(1)} MB — visible in Immich under Administration > Backups`));
     return EXIT.ok;
   }
 
