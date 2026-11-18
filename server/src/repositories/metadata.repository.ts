@@ -112,6 +112,8 @@ export class MetadataRepository {
     ],
     writeArgs: ['-api', 'largefilesupport=1', '-overwrite_original'],
     taskTimeoutMillis: 2 * 60 * 1000,
+    // Windows builds bundle ExifTool and point at it explicitly instead of relying on the Perl package
+    exiftoolPath: process.env.IMMICH_EXIFTOOL_PATH || undefined,
   });
 
   constructor(private logger: LoggingRepository) {

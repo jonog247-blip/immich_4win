@@ -222,7 +222,8 @@ const AdminConfigSchemaWithVisibility = z
     machineLearning: z
       .object({
         enabled: configBool.describe('Enabled').meta({ visibility: User }),
-        urls: z.array(z.string()).min(1).describe('ML service URLs'),
+        // empty when the deployment has no machine learning service (min(1) is enforced when it is enabled)
+        urls: z.array(z.string()).describe('ML service URLs'),
         availabilityChecks: z
           .object({
             enabled: configBool.describe('Enabled'),
@@ -613,6 +614,18 @@ export function mapPublicConfig(config: SystemConfig): PublicConfigDto {
   return PublicConfigSchema.parse(config);
 }
 
+// A native install can omit the machine learning service (empty IMMICH_MACHINE_LEARNING_URL). Those
+// deployments disable the ML features instead of repeatedly calling an unreachable URL.
+const isMachineLearningDisabled = () => process.env.IMMICH_MACHINE_LEARNING_URL === '';
+
+const machineLearningUrls = () => {
+  const urls = (process.env.IMMICH_MACHINE_LEARNING_URL || 'http://immich-machine-learning:3003')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  return urls.length > 0 ? urls : ['http://immich-machine-learning:3003'];
+};
+
 export const defaults = Object.freeze<SystemConfig>({
   backup: {
     beta: false,
@@ -688,8 +701,8 @@ export const defaults = Object.freeze<SystemConfig>({
     level: LogLevel.Log,
   },
   machineLearning: {
-    enabled: process.env.IMMICH_MACHINE_LEARNING_ENABLED !== 'false',
-    urls: [process.env.IMMICH_MACHINE_LEARNING_URL || 'http://immich-machine-learning:3003'],
+    enabled: process.env.IMMICH_MACHINE_LEARNING_ENABLED !== 'false' && !isMachineLearningDisabled(),
+    urls: machineLearningUrls(),
     availabilityChecks: {
       enabled: true,
       timeout: 2000,

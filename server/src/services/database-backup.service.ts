@@ -203,7 +203,8 @@ export class DatabaseBackupService {
         args.push(
           // used for progress monitoring
           '--echo-all',
-          '--output=/dev/null',
+          // discarded output, /dev/null does not exist on Windows
+          `--output=${process.platform === 'win32' ? 'NUL' : '/dev/null'}`,
         );
         break;
       }
@@ -212,6 +213,19 @@ export class DatabaseBackupService {
     if (!databaseMajorVersion || !databaseSemver || !satisfies(databaseSemver, '>=14.0.0 <19.0.0')) {
       this.logger.error(`Database Restore Failure: Unsupported PostgreSQL version: ${databaseVersion}`);
       throw new UnsupportedPostgresError(databaseVersion);
+    }
+
+    if (process.platform === 'win32') {
+      // Windows builds ship the PostgreSQL binaries next to the server instead of in /usr/lib/postgresql
+      const tool = bin === 'pg_dump' || bin === 'pg_dumpall' || bin === 'psql' ? `${bin}.exe` : bin;
+      return {
+        bin: path.join(process.env.IMMICH_PG_BIN || path.join(process.cwd(), '..', 'runtime', 'postgres', 'bin'), tool),
+        args,
+        databaseUsername,
+        databasePassword,
+        databaseVersion,
+        databaseMajorVersion,
+      };
     }
 
     return {
@@ -249,7 +263,9 @@ export class DatabaseBackupService {
         },
       });
 
-      gzip = this.processRepository.spawnDuplexStream(compression.command, compression.args);
+      gzip = compression.command
+        ? this.processRepository.spawnDuplexStream(compression.command, compression.args)
+        : this.storageRepository.createGzip();
       const fileStream = this.storageRepository.createWriteStream(temporaryFilePath);
 
       await pipeline(pgdump, gzip, fileStream, { signal });
@@ -269,7 +285,12 @@ export class DatabaseBackupService {
     return backupFilePath;
   }
 
-  private async getCompressionCommand() {
+  private async getCompressionCommand(): Promise<{ command: string; args: string[] }> {
+    if (process.platform === 'win32') {
+      // neither pigz nor gzip ship with Windows, so compress in-process instead of piping to a binary
+      return { command: '', args: [] };
+    }
+
     if (await this.processRepository.isCommandAvailable('pigz')) {
       const processes = Math.min(Math.max(Math.floor(this.processRepository.availableParallelism() * 0.75), 1), 32);
       return { command: 'pigz', args: ['--rsyncable', '--processes', processes.toString()] };
